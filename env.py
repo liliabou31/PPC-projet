@@ -1,6 +1,7 @@
 import time
 import multiprocessing as mp
 import random
+import socket
 
 
 def env(shared, lock):
@@ -13,11 +14,9 @@ def env(shared, lock):
         time.sleep(1)
         lock.acquire()
 
-        #climate
         if random.random() < 0.1:
             shared["drought"].value = not shared["drought"].value
 
-        #grass growth
         if not shared["drought"].value and shared["grass"].value<grass_lim:
             shared["grass"].value += 2
         else:
@@ -40,10 +39,9 @@ def inc_shared_predator(shared, lock):
     with lock:
         shared["predators"].value += 1
 
-
 if __name__ == "__main__":
     mp.set_start_method("spawn") #creates child process from scratch, to avoid bugs with the shared data
-    #shared memory
+
     shared = {
         "grass": mp.Value("i", 50),
         "preys": mp.Value("i", 0),
