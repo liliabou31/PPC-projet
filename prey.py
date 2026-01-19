@@ -1,3 +1,4 @@
+import multiprocessing as mp
 import time
 import socket
 import random
@@ -7,25 +8,32 @@ import os
 H = 30  # Seuil de faim (devient active en dessous)
 R = 80  # Seuil de reproduction (au-dessus)
 
+HOST = "localhost"
+PORT = 6666
+
 class Prey:
     def __init__(self, shared_data, lock):
-        self.energy = 50 # Énergie initiale
+        self.energy = 50
         self.state = "passive"
-        self.shared = shared_data # Accès à la mémoire partagée
+        self.shared = shared_data
         self.lock = lock
         self.alive = True
 
     def connect_to_env(self):
         """ Se connecte au socket de 'env' pour signaler son arrivée """
-        # À implémenter avec la bibliothèque socket
-        pass
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((HOST, PORT))
+                s.sendall(b"new_prey") # On envoie un simple message texte
+        except ConnectionRefusedError:
+            print("Erreur : Le processus 'env' n'est pas prêt.")
+            return
 
     def update_state(self):
-        """ Change l'état de manière déterministe selon l'énergie """
         if self.energy < H:
-            self.state = "active"
-        elif self.energy > H + 10: # On redevient passif quand on a assez mangé
-            self.state = "passive"
+            self.shared["prey_states"][os.getpid()] = "active"
+        elif self.energy > H + 10:
+            self.shared["prey_states"][os.getpid()] = "passive"
 
     def live_one_cycle(self):
         # 1. L'énergie baisse naturellement
@@ -51,22 +59,21 @@ class Prey:
             self.alive = False
             with self.lock:
                 self.shared["preys"].value -= 1
-            print(f"[PROIE {os.getpid()}] Est morte de faim.")
+            print(f"[PROIE {os.getpid()}] est morte de faim.")
 
     def reproduce(self):
-        # Logique pour lancer un nouveau processus Prey
-        self.energy -= 40 # La reproduction coûte de l'énergie
-        # Ici, il faudrait spawn un nouveau processus
-        pass
+        self.energy -= 40 
+        new_prey_proc = mp.Process(target=run_prey, args=(self.shared, self.lock))
+        new_prey_proc.start()
+        print(f"[PROIE {os.getpid()}] s'est reproduite !")
 
-# Cette fonction serait appelée par le processus principal
+
+# MAIN
 def run_prey(shared, lock):
     prey = Prey(shared, lock)
-    
-    # Signaler l'arrivée au compteur global
-    with lock:
-        shared["preys"].value += 1
-    
+
+    prey.connect_to_env()
+
     while prey.alive:
         prey.live_one_cycle()
-        time.sleep(0.5) # Vitesse de la simulation
+        time.sleep(0.5)
