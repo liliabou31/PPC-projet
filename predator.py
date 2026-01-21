@@ -18,7 +18,7 @@ class Predator:
         self.shared = shared_data
         self.lock = lock
         self.alive = True
-        
+
     def connect_to_env(self):
         """ Se connecte au socket de 'env' pour signaler son arrivée """
         try:
@@ -67,7 +67,8 @@ class Predator:
         if self.energy <= 0:
             self.alive = False
             with self.lock:
-                self.shared["predators"].value -= 1
+                if self.shared["predators"].value > 0:
+                    self.shared["predators"].value -= 1
             print(f"[PREDATEUR {os.getpid()}] est morte de faim.")
 
     def reproduce(self):

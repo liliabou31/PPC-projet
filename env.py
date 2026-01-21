@@ -17,24 +17,26 @@ def env(shared_data, lock, queue):
     t.start()
     while True:
         time.sleep(1)
-        lock.acquire()
 
-        if random.random() < 0.1:
-            shared_data["drought"].value = not shared_data["drought"].value
+        with lock:
+            if random.random() < 0.1:
+                shared_data["drought"].value = not shared_data["drought"].value
 
-        if not shared_data["drought"].value and shared_data["grass"].value<grass_lim:
-            shared_data["grass"].value += 2
-        else:
-            shared_data["grass"].value += 0
+            if not shared_data["drought"].value and shared_data["grass"].value<grass_lim:
+                shared_data["grass"].value += 2
+            else:
+                shared_data["grass"].value += 0
 
-        print(
-            f"Grass: {shared_data['grass'].value} | "
-            f"Preys: {shared_data['preys'].value} | "
-            f"Predators: {shared_data['predators'].value} | "
-            f"Drought: {shared_data['drought'].value}"
-        )
+            stats = {
+                    "grass": shared_data["grass"].value,
+                    "preys": shared_data["preys"].value,
+                    "predators": shared_data["predators"].value,
+                    "drought": shared_data["drought"].value
+                }
+            
+            # 3. ENVOI DANS LA QUEUE (en dehors du lock pour ne pas bloquer)
+        queue.put(stats)
 
-        lock.release()
         
 
 def socket_server(shared_data, lock):
