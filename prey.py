@@ -20,8 +20,10 @@ class Prey:
         self.alive = True
         self.pid = os.getpid()
         self.shared["prey_states"][self.pid] = self.state
-        self.x = random.randint(0, 100)
-        self.y = random.randint(0, 100)
+        self.x = random.randint(50, 750) # Position de départ
+        self.y = random.randint(50, 550)
+        # On stocke maintenant (x, y, état)
+        self.shared["prey_states"][self.pid] = (self.x, self.y, self.state)
 
     def connect_to_env(self):
         """ Se connecte au socket de 'env' pour signaler son arrivée """
@@ -46,22 +48,24 @@ class Prey:
             self.shared["prey_states"][self.pid] = self.state
 
     def live_one_cycle(self):
-
-# 1. Le mouvement au hasard
-
-        self.x += random.randint(-2, 2) # Il se déplace de -2 à +2 pixels
-        self.y += random.randint(-2, 2)
-
-        # 2. Sécurité : on ne sort pas du monde (0 à 100)
-        # Si x devient -1, max(0, -1) renvoie 0. Si x devient 105, min(100, 105) renvoie 100.
-        self.x = max(0, min(100, self.x))
-        self.y = max(0, min(100, self.y))
-
-        # 3. La Mise à jour CRUCIALE pour Pygame
-        # On écrit dans la Shared Memory pour que 'env.py' puisse lire la position
+        # auto-vérifcation afin d'éviter les proies zombies 
+        # Faire bouger l'animal
+        self.x += random.randint(-5, 5)
+        self.y += random.randint(-5, 5)
+        # Garder dans les limites de l'écran
+        self.x = max(10, min(790, self.x))
+        self.y = max(10, min(590, self.y))
+        
+        # Mettre à jour la mémoire partagée avec la position
         with self.lock:
-            # On stocke un tuple ((x, y), état)
-            self.shared["prey_states"][os.getpid()] = ((self.x, self.y), "active")
+            if self.pid in self.shared["prey_states"]:
+                self.shared["prey_states"][self.pid] = (self.x, self.y, self.state)
+                
+        with self.lock:
+            if self.pid not in self.shared["prey_states"]:
+                print(f"[PROIE {self.pid}] Je ne suis plus dans le dictionnaire, je m'arrête.")
+                self.alive = False
+                return 
 
         # 1. L'énergie baisse naturellement
         self.energy -= 1
@@ -84,11 +88,14 @@ class Prey:
         # 5. Mort
         if self.energy <= 0:
             self.alive = False
-            if self.pid in self.shared["prey_states"]:
-                del self.shared["prey_states"][self.pid]
             with self.lock:
-                self.shared["preys"].value -= 1
-            print(f"[PROIE {os.getpid()}] est morte de faim.")
+                # Si la proie est encore là (pas mangée par un prédateur entre temps)
+                if self.pid in self.shared["prey_states"]:
+                    del self.shared["prey_states"][self.pid]
+                    # On s'assure de ne pas descendre sous 0
+                    if self.shared["preys"].value > 0:
+                        self.shared["preys"].value -= 1
+                    print(f"[PROIE {self.pid}] morte de faim.")
 
     def reproduce(self):
         self.energy -= 40 
@@ -103,4 +110,3 @@ def run_prey(shared, lock):
     while prey.alive:
         prey.live_one_cycle()
         time.sleep(0.5)
-

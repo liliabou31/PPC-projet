@@ -13,13 +13,17 @@ PORT = 6666
 
 class Predator:
     def __init__(self, shared_data, lock):
-        self.energy = 50
-        self.state = "passive"
         self.shared = shared_data
         self.lock = lock
+        self.energy = 50
+        self.state = "passive"
         self.alive = True
-        self.x = random.randint(0, 100)
-        self.y = random.randint(0, 100)
+        self.pid = os.getpid()
+        self.x = random.randint(50, 750) # Position de départ
+        self.y = random.randint(50, 550)
+        with self.lock:
+        # On stocke maintenant (x, y, état)
+            self.shared["predator_states"][self.pid] = (self.x, self.y, self.state)
 
     def connect_to_env(self):
         """ Se connecte au socket de 'env' pour signaler son arrivée """
@@ -40,32 +44,31 @@ class Predator:
 
     def predator_eats(self): 
         with self.lock:
-            # Le prédateur regarde la liste des clés (PIDs)
-            for pid, state in self.shared["prey_states"].items():
+            # On transforme en liste pour figer la vue du dictionnaire
+            items = list(self.shared["prey_states"].items())
+            
+            for pid, state in items:
                 if state == "active":
-                    # Il a trouvé une proie active !
-                    del self.shared["prey_states"][pid] # Il supprime cette proie spécifique
-                    self.shared["preys"].value -= 1
-                    self.energy += 20
-                    print(f"J'ai mangé la proie n°{pid}")
-                    break
+                    # On vérifie si la proie existe encore ET si le compteur est positif
+                    if pid in self.shared["prey_states"] and self.shared["preys"].value > 0:
+                        del self.shared["prey_states"][pid]
+                        self.shared["preys"].value -= 1
+                        self.energy += 20
+                        print(f"J'ai mangé la proie n°{pid}. Restantes: {self.shared['preys'].value}")
+                        return # On sort après avoir mangé une seule proie
 
     def live_one_cycle(self):
-
-        # 1. Le mouvement au hasard
-        self.x += random.randint(-2, 2) # Il se déplace de -2 à +2 pixels
-        self.y += random.randint(-2, 2)
-
-        # 2. Sécurité : on ne sort pas du monde (0 à 100)
-        # Si x devient -1, max(0, -1) renvoie 0. Si x devient 105, min(100, 105) renvoie 100.
-        self.x = max(0, min(100, self.x))
-        self.y = max(0, min(100, self.y))
-
-        # 3. La Mise à jour CRUCIALE pour Pygame
-        # On écrit dans la Shared Memory pour que 'env.py' puisse lire la position
+        # Faire bouger l'animal
+        self.x += random.randint(-5, 5)
+        self.y += random.randint(-5, 5)
+        # Garder dans les limites de l'écran
+        self.x = max(10, min(790, self.x))
+        self.y = max(10, min(590, self.y))
+        
+        # Mettre à jour la mémoire partagée avec la position
         with self.lock:
-            # On stocke un tuple ((x, y), état)
-            self.shared["predator_states"][os.getpid()] = ((self.x, self.y), "active")
+            if self.pid in self.shared["predator_states"]:
+                self.shared["predator_states"][self.pid] = (self.x, self.y, self.state)
 
         # 1. L'énergie baisse naturellement
         self.energy -= 1
@@ -96,6 +99,7 @@ class Predator:
         print(f"[PREDATEUR {os.getpid()}] s'est reproduite !")
 
 
+
 # MAIN
 def run_predator(shared, lock):
     predator = Predator(shared, lock)
@@ -103,4 +107,3 @@ def run_predator(shared, lock):
     while predator.alive:
         predator.live_one_cycle()
         time.sleep(0.5)
-

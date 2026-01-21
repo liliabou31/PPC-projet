@@ -11,63 +11,65 @@ HOST = "localhost"
 PORT = 6666
 
 def env(shared_data, lock, queue):
-
-    # --- LANCER LE SERVEUR ---
-    try:
-        t = threading.Thread(target=socket_server, args=(shared_data, lock), daemon=True)
-        t.start()
-        print("[DEBUG] Thread socket lancé avec succès")
-    except Exception as e:
-        print(f"[DEBUG] Erreur lors du lancement du thread : {e}")
     grass_lim = 100
-    # ... setup socket et signal ici ...
+    t = threading.Thread(target=socket_server, args=(shared_data, lock), daemon=True)
+    t.start()
+    has_started = False
 
     while True:
-        time.sleep(0.1) # 20 images par seconde pour la fluidité
-
+        
+        time.sleep(0.1)
         with lock:
-            # 1. Extraction propre des positions (Proies)
-            prey_positions = []
+            # --- RÉCUPÉRATION DES COORDONNÉES ---
+            preys_coords = []
             for pid, data in shared_data["prey_states"].items():
-                # On vérifie si c'est bien le format ((x, y), "etat")
-                if isinstance(data, (list, tuple)) and len(data) > 0:
-                    prey_positions.append(data[0]) 
+                # On vérifie que data est bien le tuple (x, y, état)
+                if isinstance(data, tuple):
+                    preys_coords.append((data[0], data[1]))
 
-            # 2. Extraction propre des positions (Prédateurs)
-            pred_positions = []
-            # .get() évite que le code crash si le dictionnaire n'existe pas encore
+            preds_coords = []
+            # On utilise .get pour éviter les erreurs si predator_states est vide
             for pid, data in shared_data.get("predator_states", {}).items():
-                if isinstance(data, (list, tuple)) and len(data) > 0:
-                    pred_positions.append(data[0])
+                if isinstance(data, tuple):
+                    preds_coords.append((data[0], data[1]))
 
-            # 3. Gestion de l'herbe
-            if not shared_data["drought"].value and shared_data["grass"].value < grass_lim:
-                shared_data["grass"].value += 1
+            if shared_data["preys"].value > 0 or shared_data["predators"].value > 0:
+                has_started = True
 
-            # 4. Préparation du paquet pour Pygame
+            if has_started and shared_data["preys"].value == 0 and shared_data["predators"].value == 0:
+                queue.put("STOP")
+                return
+        
+            if random.random() < 0.1:
+                shared_data["drought"].value = not shared_data["drought"].value
+
+            if not shared_data["drought"].value and shared_data["grass"].value<grass_lim:
+                shared_data["grass"].value += 2
+            else:
+                shared_data["grass"].value += 0
+
+# --- PAQUET POUR PYGAME ---
             stats = {
                 "grass": shared_data["grass"].value,
-                "preys_coords": prey_positions, 
-                "preds_coords": pred_positions,
+                "preys_coords": preys_coords, # On envoie les points bleus
+                "preds_coords": preds_coords, # On envoie les points rouges
                 "drought": shared_data["drought"].value
             }
-        
-        # 5. Envoi à la queue (hors du lock pour la performance)
+            
+            # 3. ENVOI DANS LA QUEUE (en dehors du lock pour ne pas bloquer)
         queue.put(stats)
+
         
 
 def socket_server(shared_data, lock):
-    print("[DEBUG] Entrée dans socket_server") # <-- Ajoute ça
-    try : 
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("127.0.0.1", 6666))        
-        server.listen(5)
-        print("[DEBUG] Serveur en écoute sur 127.0.0.1:6666") # <-- Ajoute ça
-        
-        while True:
-            client_sock, addr = server.accept() 
-            msg = client_sock.recv(1024).decode()
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("localhost", 6666))
+    server.listen()
+    
+    while True:
+        client_sock, addr = server.accept() 
+        msg = client_sock.recv(1024).decode()
 
         if msg == "new_prey":
             # On crée le processus ICI. 
@@ -86,11 +88,8 @@ def socket_server(shared_data, lock):
             with lock:
                 shared_data["predators"].value += 1
             print(f"Nouveau predator créée par le socket !")
-                
+            
         client_sock.close()
-        
-    except Exception as e:
-            print(f"[ERROR SOCKET] {e}")
 
 
 # MAIN 
@@ -106,6 +105,7 @@ if __name__ == "__main__":
         "preys": mp.Value("i", 0),
         "prey_states": manager.dict(),
         "predators": mp.Value("i", 0),
+        "predator_states": manager.dict(),
         "drought": mp.Value("b", False),
     }
 
