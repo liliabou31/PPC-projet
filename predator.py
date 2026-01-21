@@ -18,6 +18,8 @@ class Predator:
         self.shared = shared_data
         self.lock = lock
         self.alive = True
+        self.x = random.randint(0, 100)
+        self.y = random.randint(0, 100)
 
     def connect_to_env(self):
         """ Se connecte au socket de 'env' pour signaler son arrivée """
@@ -49,6 +51,22 @@ class Predator:
                     break
 
     def live_one_cycle(self):
+
+        # 1. Le mouvement au hasard
+        self.x += random.randint(-2, 2) # Il se déplace de -2 à +2 pixels
+        self.y += random.randint(-2, 2)
+
+        # 2. Sécurité : on ne sort pas du monde (0 à 100)
+        # Si x devient -1, max(0, -1) renvoie 0. Si x devient 105, min(100, 105) renvoie 100.
+        self.x = max(0, min(100, self.x))
+        self.y = max(0, min(100, self.y))
+
+        # 3. La Mise à jour CRUCIALE pour Pygame
+        # On écrit dans la Shared Memory pour que 'env.py' puisse lire la position
+        with self.lock:
+            # On stocke un tuple ((x, y), état)
+            self.shared["predator_states"][os.getpid()] = ((self.x, self.y), "active")
+
         # 1. L'énergie baisse naturellement
         self.energy -= 1
         
@@ -85,3 +103,4 @@ def run_predator(shared, lock):
     while predator.alive:
         predator.live_one_cycle()
         time.sleep(0.5)
+
