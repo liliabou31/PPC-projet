@@ -18,6 +18,8 @@ class Prey:
         self.shared = shared_data
         self.lock = lock
         self.alive = True
+        self.pid = os.getpid()
+        self.shared["prey_states"][self.pid] = self.state
 
     def connect_to_env(self):
         """ Se connecte au socket de 'env' pour signaler son arrivée """
@@ -30,10 +32,16 @@ class Prey:
             return
 
     def update_state(self):
+        """ Change l'état de manière déterministe """
+        old_state = self.state
         if self.energy < H:
-            self.shared["prey_states"][os.getpid()] = "active"
+            self.state = "active"
         elif self.energy > H + 10:
-            self.shared["prey_states"][os.getpid()] = "passive"
+            self.state = "passive"
+        
+        # 2. Mettre à jour le dictionnaire partagé si l'état change
+        if old_state != self.state:
+            self.shared["prey_states"][self.pid] = self.state
 
     def live_one_cycle(self):
         # 1. L'énergie baisse naturellement
@@ -57,6 +65,8 @@ class Prey:
         # 5. Mort
         if self.energy <= 0:
             self.alive = False
+            if self.pid in self.shared["prey_states"]:
+                del self.shared["prey_states"][self.pid]
             with self.lock:
                 self.shared["preys"].value -= 1
             print(f"[PROIE {os.getpid()}] est morte de faim.")
@@ -68,11 +78,8 @@ class Prey:
         print(f"[PROIE {os.getpid()}] s'est reproduite !")
 
 
-# MAIN
 def run_prey(shared, lock):
     prey = Prey(shared, lock)
-
-    prey.connect_to_env()
 
     while prey.alive:
         prey.live_one_cycle()

@@ -1,15 +1,16 @@
-from IPython.display import run_display
+from display import run_display
 import time
 import multiprocessing as mp
 import random
 import socket
 import threading
-
+from prey import run_prey 
+from predator import run_predator
 
 HOST = "localhost"
 PORT = 6666
 
-def env(shared_data, lock):
+def env(shared_data, lock, queue):
 
     grass_lim = 100
     t = threading.Thread(target=socket_server, args=(shared_data, lock), daemon=True)
@@ -34,30 +35,37 @@ def env(shared_data, lock):
         )
 
         lock.release()
-
-def inc_shared_data_data_prey(shared_data, lock):
-    with lock:
-        shared_data["preys"].value += 1
-
-def inc_shared_data_data_predator(shared_data, lock):
-    with lock:
-        shared_data["predators"].value += 1
+        
 
 def socket_server(shared_data, lock):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(("localhost", 6666))
     server.listen()
     
     while True:
         client_sock, addr = server.accept() 
-        print(f"[ENV] Connexion acceptée de {addr}")
         msg = client_sock.recv(1024).decode()
 
         if msg == "new_prey":
+            # On crée le processus ICI. 
+            # Comme c'est un enfant de env, il RECOIT le lock et le shared_data
+            p = mp.Process(target=run_prey, args=(shared_data, lock))
+            p.start()
             with lock:
                 shared_data["preys"].value += 1
-        client_sock.close()
+            print(f"Nouvelle proie créée par le socket !")
 
+        elif msg == "new_predator":
+            # On crée le processus ICI. 
+            # Comme c'est un enfant de env, il RECOIT le lock et le shared_data
+            p = mp.Process(target=run_predator, args=(shared_data, lock))
+            p.start()
+            with lock:
+                shared_data["predators"].value += 1
+            print(f"Nouveau predator créée par le socket !")
+            
+        client_sock.close()
 
 
 # MAIN 

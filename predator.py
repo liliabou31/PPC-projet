@@ -18,7 +18,7 @@ class Predator:
         self.shared = shared_data
         self.lock = lock
         self.alive = True
-
+        
     def connect_to_env(self):
         """ Se connecte au socket de 'env' pour signaler son arrivée """
         try:
@@ -80,8 +80,6 @@ class Predator:
 # MAIN
 def run_predator(shared, lock):
     predator = Predator(shared, lock)
-
-    predator.connect_to_env()
 
     while predator.alive:
         predator.live_one_cycle()
