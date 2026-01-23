@@ -1,44 +1,84 @@
-import pygame
-import sys
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
+import socket
+import random
+
+def send_cmd(msg):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            s.connect(("localhost", 6666))
+            s.sendall(msg.encode())
+    except:
+        pass
 
 def run_display(queue):
-    pygame.init()
-    # Configuration de la fenêtre
-    WIDTH, HEIGHT = 800, 600
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Simulation Écosystème - PPC")
-    clock = pygame.time.Clock()
+    plt.ion()
+    fig, ax = plt.subplots(figsize=(9, 7))
+    plt.subplots_adjust(bottom=0.2)
+    
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
+    
+    # 1. HERBE : On garde des positions fixes car l'herbe ne bouge pas
+    grass_pos = [(random.uniform(5, 95), random.uniform(5, 95)) for _ in range(200)]
+
+    # 2. OBJETS GRAPHIQUES
+    grass_plot, = ax.plot([], [], 'go', markersize=4, label="Herbe (Vert)")
+    # Les proies et prédateurs n'ont plus de positions pré-calculées
+    prey_plot,  = ax.plot([], [], 'bs', markersize=6, label="Proie (Bleu)")
+    pred_plot,  = ax.plot([], [], 'r^', markersize=8, label="Predateur (Rouge)")
+
+    ax_prey = plt.axes([0.05, 0.05, 0.25, 0.06])
+    ax_pred = plt.axes([0.37, 0.05, 0.25, 0.06])
+    ax_drought = plt.axes([0.70, 0.05, 0.25, 0.06])
+
+    btn_prey = Button(ax_prey, ' + Proie ', color='deepskyblue', hovercolor="#B7EFFF")
+    btn_pred = Button(ax_pred, ' + Prédateur ', color='tomato', hovercolor="#FEA872")
+    btn_drought = Button(ax_drought, ' Sécheresse ', color='gold', hovercolor="#FFF49F")
+
+    btn_prey.on_clicked(lambda e: send_cmd("new_prey"))
+    btn_pred.on_clicked(lambda e: send_cmd("new_predator"))
+    btn_drought.on_clicked(lambda e: send_cmd("drought_on"))
 
     while True:
-        # 1. Gestion des événements (pour pouvoir fermer la fenêtre)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+        stats = queue.get()
+        if stats == "STOP": break
 
-        # 2. Récupération des données (On vide la queue pour avoir le dernier état)
-        stats = None
-        while not queue.empty():
-            stats = queue.get()
+        if isinstance(stats, dict):
+            # On récupère la liste des coordonnées VIVANTES envoyée par env
+            g_coords = stats.get("grass_coords", []) 
+            
+            if g_coords:
+                # On "dézippe" la liste de tuples [(x1,y1), (x2,y2)] en deux listes [x], [y]
+                xg, yg = zip(*g_coords)
+                grass_plot.set_data(xg, yg)
+            else:
+                # Si la liste est vide (plus d'herbe), on vide le plot
+                grass_plot.set_data([], [])
 
-        if stats:
-            # Fond d'écran (Rougeâtre si sécheresse, vert sinon)
-            bg_color = (200, 100, 100) if stats.get("drought") else (30, 30, 30)
-            screen.fill(bg_color)
+            # --- MISE À JOUR PROIES (MOUVEMENT RÉEL) ---
+            p_coords = stats.get("preys_coords", [])
+            if p_coords:
+                xp, yp = zip(*p_coords)
+                prey_plot.set_data(xp, yp)
+            else:
+                prey_plot.set_data([], [])
 
-            # Dessiner l'herbe (Barre en bas par exemple)
-            grass_level = stats.get("grass", 0)
-            pygame.draw.rect(screen, (0, 255, 0), (10, HEIGHT - 20, grass_level * 5, 10))
+            # --- MISE À JOUR PREDATEURS (MOUVEMENT RÉEL) ---
+            pr_coords = stats.get("preds_coords", [])
+            if pr_coords:
+                xr, yr = zip(*pr_coords)
+                pred_plot.set_data(xr, yr)
+            else:
+                pred_plot.set_data([], [])
 
-            # 3. DESSINER LES PROIES (Points bleus)
-            for pos in stats.get("preys_coords", []):
-                # On multiplie par 8 si ton monde fait 100x100 pour remplir l'écran 800x600
-                pygame.draw.circle(screen, (0, 150, 255), (int(pos[0]*8), int(pos[1]*6)), 5)
+            # --- INTERFACE ---
+            ax.set_facecolor("#FFFAD4" if stats.get('drought') else 'white')
+            ax.set_title(f"Simulation PPC | H: {stats['grass']} | P: {stats['preys']} | L: {stats['predators']}")
 
-            # 4. DESSINER LES PRÉDATEURS (Points rouges)
-            for pos in stats.get("preds_coords", []):
-                pygame.draw.circle(screen, (255, 50, 50), (int(pos[0]*8), int(pos[1]*6)), 8)
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        plt.pause(0.1)
 
-            pygame.display.flip() # Mise à jour de l'affichage
-        
-        clock.tick(30) # 30 FPS pour ne pas surcharger le CPU
+    plt.close()

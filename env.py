@@ -11,105 +11,80 @@ HOST = "localhost"
 PORT = 6666
 
 def env(shared_data, lock, queue):
-
-    # --- LANCER LE SERVEUR ---
-    try:
-        t = threading.Thread(target=socket_server, args=(shared_data, lock), daemon=True)
-        t.start()
-        print("[DEBUG] Thread socket lancé avec succès")
-    except Exception as e:
-        print(f"[DEBUG] Erreur lors du lancement du thread : {e}")
     grass_lim = 100
-    # ... setup socket et signal ici ...
-
+    t = threading.Thread(target=socket_server, args=(shared_data, lock), daemon=True)
+    t.start()
+    
     while True:
-        time.sleep(0.1) # 20 images par seconde pour la fluidité
-
+        time.sleep(0.5)
+        
         with lock:
-            # 1. Extraction propre des positions (Proies)
-            prey_positions = []
-            for pid, data in shared_data["prey_states"].items():
-                # On vérifie si c'est bien le format ((x, y), "etat")
-                if isinstance(data, (list, tuple)) and len(data) > 0:
-                    prey_positions.append(data[0]) 
+            states = shared_data["grass_states"]
+            positions = shared_data["static_grass_pos"]
 
-            # 2. Extraction propre des positions (Prédateurs)
-            pred_positions = []
-            # .get() évite que le code crash si le dictionnaire n'existe pas encore
-            for pid, data in shared_data.get("predator_states", {}).items():
-                if isinstance(data, (list, tuple)) and len(data) > 0:
-                    pred_positions.append(data[0])
+            visible_grass = [positions[i] for i, alive in enumerate(states) if alive]
 
-            # 3. Gestion de l'herbe
-            if not shared_data["drought"].value and shared_data["grass"].value < grass_lim:
-                shared_data["grass"].value += 1
-
-            # 4. Préparation du paquet pour Pygame
             stats = {
-                "grass": shared_data["grass"].value,
-                "preys_coords": prey_positions, 
-                "preds_coords": pred_positions,
-                "drought": shared_data["drought"].value
+                "grass": len(visible_grass),
+                "grass_coords": visible_grass,
+                "preys": shared_data["preys"].value,
+                "predators": shared_data["predators"].value,
+                "drought": shared_data["drought"].value,
+                "preys_coords": list(shared_data["prey_positions"].values()),
+                "preds_coords": list(shared_data["pred_positions"].values())
             }
-        
-        # 5. Envoi à la queue (hors du lock pour la performance)
         queue.put(stats)
-        
 
 def socket_server(shared_data, lock):
-    print("[DEBUG] Entrée dans socket_server") # <-- Ajoute ça
-    try : 
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("127.0.0.1", 6666))        
-        server.listen(5)
-        print("[DEBUG] Serveur en écoute sur 127.0.0.1:6666") # <-- Ajoute ça
-        
-        while True:
-            client_sock, addr = server.accept() 
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((HOST, PORT))
+    server.listen()
+    
+    while True:
+        client_sock, _ = server.accept() 
+        try:
             msg = client_sock.recv(1024).decode()
-
-        if msg == "new_prey":
-            # On crée le processus ICI. 
-            # Comme c'est un enfant de env, il RECOIT le lock et le shared_data
-            p = mp.Process(target=run_prey, args=(shared_data, lock))
-            p.start()
-            with lock:
-                shared_data["preys"].value += 1
-            print(f"Nouvelle proie créée par le socket !")
-
-        elif msg == "new_predator":
-            # On crée le processus ICI. 
-            # Comme c'est un enfant de env, il RECOIT le lock et le shared_data
-            p = mp.Process(target=run_predator, args=(shared_data, lock))
-            p.start()
-            with lock:
-                shared_data["predators"].value += 1
-            print(f"Nouveau predator créée par le socket !")
-                
-        client_sock.close()
-        
-    except Exception as e:
-            print(f"[ERROR SOCKET] {e}")
-
+            if msg == "new_prey":
+                p = mp.Process(target=run_prey, args=(shared_data, lock))
+                p.start()
+                with lock:
+                    shared_data["preys"].value += 1
+            elif msg == "new_predator":
+                p = mp.Process(target=run_predator, args=(shared_data, lock))
+                p.start()
+                with lock:
+                    shared_data["predators"].value += 1
+            elif msg == "drought_on":
+                shared_data["drought"].value = not shared_data["drought"].value
+        finally:
+            client_sock.close()
 
 # MAIN 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     
     manager = mp.Manager()
-    queue = mp.Queue() # La file de messages
+    queue = mp.Queue()
     lock = mp.Lock()
     
+    grass_coords = [(random.uniform(5, 95), random.uniform(5, 95)) for _ in range(400)]
+    grass_states = manager.list([True] * 100)
+    
     shared_data = {
-        "grass": mp.Value("i", 50),
+        "grass": mp.Value("i", 20),
         "preys": mp.Value("i", 0),
-        "prey_states": manager.dict(),
         "predators": mp.Value("i", 0),
         "drought": mp.Value("b", False),
+        "prey_states": manager.dict(), 
+        "prey_positions": manager.dict(), 
+        "pred_positions": manager.dict(),  
+        "locked_preys": manager.dict(),
+        "locked_grass": manager.dict(), 
+        "static_grass_pos": grass_coords,
+        "grass_states" : grass_states
     }
 
-    # Lancement des deux processus piliers
     env_p = mp.Process(target=env, args=(shared_data, lock, queue))
     disp_p = mp.Process(target=run_display, args=(queue,))
     
