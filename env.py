@@ -72,7 +72,7 @@ if __name__ == "__main__":
     grass_states = manager.list([True] * 100)
     
     shared_data = {
-        "grass": mp.Value("i", 20),
+        "grass": mp.Value("i", 100),
         "preys": mp.Value("i", 0),
         "predators": mp.Value("i", 0),
         "drought": mp.Value("b", False),

@@ -14,7 +14,7 @@ PORT = 6666
 class Prey:
     def __init__(self, shared_data, lock):
         self.energy = 50
-        self.state = "passive"
+        self.state = "active"
         self.shared = shared_data
         self.lock = lock
         self.alive = True
@@ -32,30 +32,99 @@ class Prey:
             grass_positions = self.shared["static_grass_pos"]
             occupied_grass = self.shared["locked_grass"] 
             
-            best_index = None
-            max_dist = float("inf")
+        best_index = None
+        max_dist = float("inf")
             
-            for i in range(self.shared["grass"].value):
-                if i not in occupied_grass and self.shared["grass_states"][i] == True: 
-                    pos = grass_positions[i]
-                    #dist = abs(self.x - pos[0])+ abs(self.y - pos[1])
-                    dist = math.sqrt((self.x - pos[0])**2 + (self.y - pos[1])**2)
-                    if dist < max_dist:
-                        max_dist = dist
-                        best_index = i
+        for i in range(self.shared["grass"].value):
+            if i not in occupied_grass and self.shared["grass_states"][i] == True: 
+                pos = grass_positions[i]
+                dist = abs(self.x - pos[0])+ abs(self.y - pos[1])
+                #dist = (self.x - pos[0])**2 + (self.y - pos[1])**2
+                if dist < max_dist:
+                    max_dist = dist
+                    best_index = i
             
-            if best_index is not None:
+        if best_index is not None:
+            with self.lock:
                 self.shared["locked_grass"][best_index] = self.pid
-                self.target_grass_index = best_index
+            self.target_grass_index = best_index
+
+    
+
+    def direction_vers(self, cible):
+        px, py = self.x, self.y
+        hx, hy = cible
+        directions = []
+
+        if hx < px: directions.append((-1, 0))
+        if hx > px: directions.append((1, 0))
+        if hy < py: directions.append((0, -1))
+        if hy > py: directions.append((0, 1))
+        if len(directions) == 2:
+            directions.append((directions[0][0], directions[1][1]))
+
+        if not directions:  
+            return
+
+        dx, dy = random.choice(directions)
+        x, y = self.x, self.y
+
+        self.x, self.y = min(max(0, x + dx), 100 - 1), min(max(0, y + dy), 100 - 1)
+        
+
+    def deplacement_proie(self):
+        target_reached = False
+        
+        # 1. Tentative de ciblage si la proie a faim (état active)
+        if self.state == 'active':
+            # Si elle n'a pas encore de cible, on en cherche une
+            if self.target_grass_index is None:
+                self.find_nearest_grass()
+            
+            # Si elle a une cible, elle fonce dessus
+            if self.target_grass_index is not None:
+                with self.lock:
+                    # Sécurité : on vérifie que l'herbe est toujours là
+                    if self.shared["grass_states"][self.target_grass_index] == True:
+                        cible_pos = self.shared["static_grass_pos"][self.target_grass_index]
+                    else:
+                        cible_pos = None
+                        self.target_grass_index = None # L'herbe a disparu, on reset la cible
+
+                if cible_pos:
+                    self.direction_vers(cible_pos)
+                    target_reached = True
+                    
+                    dist = abs(self.x - cible_pos[0]) + abs(self.y - cible_pos[1])
+                    if dist < 1.5: # On élargit un peu la zone de détection
+                        self.eat()
+                        self.target_grass_index = None
+        
+        # 2. Si pas de cible ou pas faim : Balade aléatoire
+        if not target_reached:
+            valeur = random.randint(1, 8)
+            dx, dy = 0, 0
+            if valeur == 1: dx = 1
+            elif valeur == 2: dx = -1
+            elif valeur == 3: dy = 1
+            elif valeur == 4: dy = -1
+            elif valeur == 5: dx, dy = 1, 1
+            elif valeur == 6: dx, dy = 1, -1
+            elif valeur == 7: dx, dy = -1, 1
+            elif valeur == 8: dx, dy = -1, -1
+            
+            self.x = min(max(self.x + dx, 0), 99)
+            self.y = min(max(self.y + dy, 0), 99)
+
+        # 3. MISE À JOUR CRUCIAL : Informe le dictionnaire partagé pour l'affichage
+        with self.lock:
+            self.shared["prey_positions"][self.pid] = (self.x, self.y)
 
     def move(self):
         has_moved_to_target = False
         if self.target_grass_index is not None:
             with self.lock:
-                if self.target_grass_index >= self.shared["grass"].value:
-                    self.target_grass_index = None
-                else:
-                    target_pos = self.shared["static_grass_pos"][self.target_grass_index]
+                target_pos = self.shared["static_grass_pos"][self.target_grass_index]
             
             # Si la proie a repéré de l'herbe
 
@@ -68,19 +137,15 @@ class Prey:
                     self.x += (dx / dist) * step
                     self.y += (dy / dist) * step
                     has_moved_to_target = True
-                    # 2. On recalcule la distance IMMEDIATEMENT après le mouvement
                     new_dx = target_pos[0] - self.x
                     new_dy = target_pos[1] - self.y
                     new_dist = math.sqrt(new_dx**2 + new_dy**2)
 
-                    # 3. Si on est dessus, on mange tout de suite !
                     if new_dist < 1.5: 
                         self.eat()
                 #else:
                 #   self.eat()
         
-        # Errance 
-
         if not has_moved_to_target:
             self.x += random.uniform(-2, 2)
             self.y += random.uniform(-2, 2)
@@ -103,7 +168,10 @@ class Prey:
                 
                 if idx in self.shared["locked_grass"]:
                     del self.shared["locked_grass"][idx] # Suppression de l'herbe
-            self.target_grass_index = None
+            else:
+                # Si l'herbe a disparu juste avant, on libère quand même l'index
+                if idx in self.shared["locked_grass"]:
+                    del self.shared["locked_grass"][idx]
 
     def update_state(self):
         old_state = self.state
@@ -146,7 +214,7 @@ class Prey:
                 return 
 
         # Déplacement et alimentation
-        self.move()
+        self.deplacement_proie()
 
         # Métabolisme
         self.energy -= 1
