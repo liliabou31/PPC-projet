@@ -66,8 +66,8 @@ class Predator:
         dist = math.sqrt(dx**2 + dy**2)
         
         if dist > 1.5:
-            self.x += (dx / dist) * 2.8
-            self.y += (dy / dist) * 2.8
+            self.x += (dx / dist) * 2.5
+            self.y += (dy / dist) * 2.5
         else:
             self.eat_prey(self.target_prey_pid)
 
@@ -101,11 +101,12 @@ class Predator:
         print(f"[PREDATEUR {self.pid}] est mort de faim.")
 
     def reproduce(self):
-        self.energy -= 45
-        p = mp.Process(target=run_predator, args=(self.shared, self.lock))
-        p.start()
-        with self.lock:
-            self.shared["predators"].value += 1
+        if len(self.shared["predators"].value) >= 2 :
+            self.energy -= 35
+            p = mp.Process(target=run_predator, args=(self.shared, self.lock))
+            p.start()
+            with self.lock:
+                self.shared["predators"].value += 1
     
     def live_one_cycle(self):
         self.energy -= 1

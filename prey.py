@@ -162,16 +162,22 @@ class Prey:
     def eat(self):
         with self.lock:
             idx = self.target_grass_index
+            #print("[EAT] target idx =", idx)
             if idx is not None and idx < len(self.shared["grass_states"]):
+                #print("[EAT] BEFORE:", self.shared["grass_states"][idx])
                 self.shared["grass_states"][idx] = False # l'herbe n'est pas supprimée mais rendue invisible
+                #print("[EAT] AFTER :", self.shared["grass_states"][idx])
+                #print("[EAT] grass_states count alive:",sum(self.shared["grass_states"]))
                 self.energy += 20
-                
+
                 if idx in self.shared["locked_grass"]:
                     del self.shared["locked_grass"][idx] # Suppression de l'herbe
+                    #print(self.shared["locked_grass"])
             else:
                 # Si l'herbe a disparu juste avant, on libère quand même l'index
                 if idx in self.shared["locked_grass"]:
                     del self.shared["locked_grass"][idx]
+                    #print("[EAT] INVALID IDX", idx)
 
     def update_state(self):
         old_state = self.state
