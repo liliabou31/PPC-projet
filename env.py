@@ -19,12 +19,12 @@ def env(shared_data, lock, queue):
         
         with lock:
             # 1. On récupère TOUJOURS la version la plus à jour (celle modifiée par les proies)
-            current_pos = list(shared_data["static_grass_pos"])
+            current_pos = shared_data["static_grass_pos"]
             current_states = shared_data["grass_states"]
             modified = False
             dead = current_states.count(False)
             alive = current_states.count(True)
-            print(f"[ENV] grass alive={alive} dead={dead}")
+            #print(f"[ENV] grass alive={alive} dead={dead}")
             is_drought = shared_data["drought"].is_set()
 
             if not is_drought:
