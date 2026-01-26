@@ -1,29 +1,48 @@
 from display import run_display
+from prey import run_prey 
+from predator import run_predator
 import time
 import multiprocessing as mp
 import random
 import socket
 import threading
-from prey import run_prey 
-from predator import run_predator
 
 HOST = "localhost"
 PORT = 6666
 
-def env(shared_data, lock, queue):
+def env(shared_data, lock, queue, command_queue):
     t = threading.Thread(target=socket_server, args=(shared_data, lock), daemon=True)
     t.start()
-    
+
     while True:
         time.sleep(0.5)
-        
+        if not command_queue.empty():
+            cmd = command_queue.get()
+            if cmd == "new_prey":
+                # L'ENV crée le processus, mais ne l'incrémente pas encore
+                p = mp.Process(target=run_prey, args=(shared_data, lock))
+                p.start()
+
+            elif cmd == "new_predator":
+                # L'ENV crée le processus, mais ne l'incrémente pas encore
+                p = mp.Process(target=run_predator, args=(shared_data, lock))
+                p.start()
+
+            elif cmd == "drought_on":
+                # On bascule l'état de l'Event
+                if shared_data["drought"].is_set():
+                    shared_data["drought"].clear()
+                    print("[ENV] Fin de la sécheresse")
+                else:
+                    shared_data["drought"].set()
+                    print("[ENV] Début de la sécheresse")
         with lock:
             # 1. On récupère TOUJOURS la version la plus à jour (celle modifiée par les proies)
             current_pos = shared_data["static_grass_pos"]
             current_states = shared_data["grass_states"]
             modified = False
-            dead = current_states.count(False)
-            alive = current_states.count(True)
+            #dead = current_states.count(False)
+            #alive = current_states.count(True)
             #print(f"[ENV] grass alive={alive} dead={dead}")
             is_drought = shared_data["drought"].is_set()
 
@@ -61,31 +80,35 @@ def env(shared_data, lock, queue):
 
 def socket_server(shared_data, lock):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((HOST, PORT))
     server.listen()
     
     while True:
-        client_sock, _ = server.accept() 
-        try:
-            msg = client_sock.recv(1024).decode()
-            if msg == "new_prey":
-                p = mp.Process(target=run_prey, args=(shared_data, lock))
-                p.start()
-                with lock: shared_data["preys"].value += 1
-            elif msg == "new_predator":
-                p = mp.Process(target=run_predator, args=(shared_data, lock))
-                p.start()
-                with lock: shared_data["predators"].value += 1
-            elif msg == "drought_on":
-                if shared_data["drought"].is_set():
-                    shared_data["drought"].clear()
-                    print("[SIGNAL] Fin de la sécheresse")
-                else:
-                    shared_data["drought"].set()
-                    print("[SIGNAL] Début de la sécheresse")
-        finally:
-            client_sock.close()
+        client_sock, _ = server.accept()
+        msg = client_sock.recv(1024).decode()
+        
+        # C'est ici que la proie confirme son arrivée
+        if "iam_prey" in msg:
+            parts = msg.split(":")
+            pid = int(parts[1])
+            posX = float(parts[2])
+            posY = float(parts[3])
+            
+            with lock:
+                shared_data["preys"].value += 1
+                shared_data["prey_positions"][pid] = (posX, posY)
+                shared_data["prey_states"][pid] = "active"
+        
+        elif "iam_predator" in msg:
+            parts = msg.split(":")
+            pid = int(parts[1])
+            posX = float(parts[2])
+            posY = float(parts[3])
+            
+            with lock:
+                shared_data["predators"].value += 1
+                shared_data["predators_positions"][pid] = (posX, posY)
+        client_sock.close()
 
 # MAIN 
 if __name__ == "__main__":
@@ -93,6 +116,7 @@ if __name__ == "__main__":
     
     manager = mp.Manager()
     queue = mp.Queue()
+    command_queue = mp.Queue()
     lock = mp.Lock()
 
     nb_grass = 200
@@ -118,8 +142,8 @@ if __name__ == "__main__":
         "drought": drought_event
     }
 
-    env_p = mp.Process(target=env, args=(shared_data, lock, queue))
-    disp_p = mp.Process(target=run_display, args=(queue,))
+    env_p = mp.Process(target=env, args=(shared_data, lock, queue,command_queue))
+    disp_p = mp.Process(target=run_display, args=(queue,command_queue))
     
     env_p.start()
     disp_p.start()

@@ -12,7 +12,7 @@ def send_cmd(msg):
     except:
         pass
 
-def run_display(queue):
+def run_display(queue, command_queue):
     plt.ion()
     fig, ax = plt.subplots(figsize=(9, 7))
     plt.subplots_adjust(bottom=0.2)
@@ -37,9 +37,9 @@ def run_display(queue):
     btn_pred = Button(ax_pred, ' + Prédateur ', color='tomato', hovercolor="#FEA872")
     btn_drought = Button(ax_drought, ' Sécheresse ', color='gold', hovercolor="#FFF49F")
 
-    btn_prey.on_clicked(lambda e: send_cmd("new_prey"))
-    btn_pred.on_clicked(lambda e: send_cmd("new_predator"))
-    btn_drought.on_clicked(lambda e: send_cmd("drought_on"))
+    btn_prey.on_clicked(lambda e: command_queue.put("new_prey"))
+    btn_prey.on_clicked(lambda e: command_queue.put("new_predator"))
+    btn_prey.on_clicked(lambda e: command_queue.put("drought_on"))
 
     while True:
         stats = queue.get()

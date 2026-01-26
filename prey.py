@@ -235,7 +235,19 @@ class Prey:
             self.die("de faim")
 
 def run_prey(shared, lock):
+    pid = os.getpid()
     prey = Prey(shared, lock)
+    
+    msg = f"iam_prey:{pid}:{prey.x}:{prey.y}"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(("localhost", 6666))
+        s.sendall(msg.encode())
+        s.close()
+    except Exception as e:
+        print(f"Erreur connexion socket: {e}")
+        return
+
     while prey.alive:
         prey.live_one_cycle()
         time.sleep(0.15)

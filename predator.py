@@ -137,7 +137,20 @@ class Predator:
             self.die()
 
 def run_predator(shared, lock):
-    predator = Predator(shared, lock)
-    while predator.alive:
-        predator.live_one_cycle()
-        time.sleep(0.1)
+    pid = os.getpid()
+    pred = Predator(shared, lock)
+    
+    # 1. Se signaler à l'ENV via Socket
+    msg = f"iam_prey:{pid}:{pred.x}:{pred.y}"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(("localhost", 6666))
+        s.sendall(msg.encode())
+        s.close()
+    except Exception as e:
+        print(f"Erreur connexion socket: {e}")
+        return
+    
+    while pred.alive:
+        pred.live_one_cycle()
+        time.sleep(0.15)
