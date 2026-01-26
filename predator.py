@@ -141,7 +141,7 @@ def run_predator(shared, lock):
     pred = Predator(shared, lock)
     
     # 1. Se signaler à l'ENV via Socket
-    msg = f"iam_prey:{pid}:{pred.x}:{pred.y}"
+    msg = f"iam_predator:{pid}:{pred.x}:{pred.y}"
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(("localhost", 6666))

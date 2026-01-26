@@ -38,8 +38,8 @@ def run_display(queue, command_queue):
     btn_drought = Button(ax_drought, ' Sécheresse ', color='gold', hovercolor="#FFF49F")
 
     btn_prey.on_clicked(lambda e: command_queue.put("new_prey"))
-    btn_prey.on_clicked(lambda e: command_queue.put("new_predator"))
-    btn_prey.on_clicked(lambda e: command_queue.put("drought_on"))
+    btn_pred.on_clicked(lambda e: command_queue.put("new_predator"))
+    btn_drought.on_clicked(lambda e: command_queue.put("drought_on"))
 
     while True:
         stats = queue.get()

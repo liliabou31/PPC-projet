@@ -11,7 +11,7 @@ HOST = "localhost"
 PORT = 6666
 
 def env(shared_data, lock, queue, command_queue):
-    t = threading.Thread(target=socket_server, args=(shared_data, lock), daemon=True)
+    t = threading.Thread(target=socket_server, args=(shared_data, lock, command_queue), daemon=True)
     t.start()
 
     while True:
@@ -78,7 +78,7 @@ def env(shared_data, lock, queue, command_queue):
             }
         queue.put(stats)
 
-def socket_server(shared_data, lock):
+def socket_server(shared_data, lock, command_queue):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
     server.listen()
@@ -104,10 +104,13 @@ def socket_server(shared_data, lock):
             pid = int(parts[1])
             posX = float(parts[2])
             posY = float(parts[3])
+
+        elif msg == "drought_on":
+            command_queue.put("drought_on")
             
             with lock:
                 shared_data["predators"].value += 1
-                shared_data["predators_positions"][pid] = (posX, posY)
+                shared_data["pred_positions"][pid] = (posX, posY)
         client_sock.close()
 
 # MAIN 
