@@ -1,7 +1,8 @@
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 import socket
-import random
+import os
+import signal
 
 def send_cmd(msg):
     try:
@@ -12,18 +13,14 @@ def send_cmd(msg):
     except:
         pass
 
-def run_display(queue, command_queue):
+def run_display(queue, command_queue, pid):
     plt.ion()
     fig, ax = plt.subplots(figsize=(9, 7))
     plt.subplots_adjust(bottom=0.2)
     
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
-    
-    # 1. HERBE : On garde des positions fixes car l'herbe ne bouge pas
-    grass_pos = [(random.uniform(5, 95), random.uniform(5, 95)) for _ in range(200)]
 
-    # 2. OBJETS GRAPHIQUES
     grass_plot, = ax.plot([], [], 'go', markersize=4, label="Herbe (Vert)")
     # Les proies et prédateurs n'ont plus de positions pré-calculées
     prey_plot,  = ax.plot([], [], 'bs', markersize=6, label="Proie (Bleu)")
@@ -39,7 +36,7 @@ def run_display(queue, command_queue):
 
     btn_prey.on_clicked(lambda e: command_queue.put("new_prey"))
     btn_pred.on_clicked(lambda e: command_queue.put("new_predator"))
-    btn_drought.on_clicked(lambda e: command_queue.put("drought_on"))
+    btn_drought.on_clicked(lambda e: os.kill(pid, signal.SIGUSR1))
 
     while True:
         stats = queue.get()
