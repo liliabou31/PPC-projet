@@ -7,13 +7,13 @@ import math  # <--- Crucial pour math.sqrt
 
 # Seuils 
 H = 30  
-R = 80  
+R = 60
 HOST = "localhost"
 PORT = 6666
 
 class Prey:
     def __init__(self, shared_data, lock):
-        self.energy = 50
+        self.energy = 40
         self.state = "active"
         self.shared = shared_data
         self.lock = lock
@@ -48,8 +48,6 @@ class Prey:
             with self.lock:
                 self.shared["locked_grass"][best_index] = self.pid
             self.target_grass_index = best_index
-
-    
 
     def direction_vers(self, cible):
         px, py = self.x, self.y
@@ -168,7 +166,7 @@ class Prey:
                 self.shared["grass_states"][idx] = False # l'herbe n'est pas supprimée mais rendue invisible
                 #print("[EAT] AFTER :", self.shared["grass_states"][idx])
                 #print("[EAT] grass_states count alive:",sum(self.shared["grass_states"]))
-                self.energy += 20
+                self.energy += 25
 
                 if idx in self.shared["locked_grass"]:
                     del self.shared["locked_grass"][idx] # Suppression de l'herbe
@@ -205,7 +203,7 @@ class Prey:
         print(f"[PROIE {self.pid}] est morte ({reason}).")
 
     def reproduce(self):
-        if len(self.shared["prey_states"]) >= 2 :
+        if len(self.shared["prey_states"]) > 1 :
             self.energy -= 40 
             new_prey_proc = mp.Process(target=run_prey, args=(self.shared, self.lock))
             new_prey_proc.start()

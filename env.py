@@ -11,9 +11,10 @@ import signal
 HOST = "localhost"
 PORT = 6666
 
-def env(s_data, lock, queue, command_queue):
-    global shared_data
-    shared_data = s_data
+def env(shared_data, lock, queue, command_queue, drought_event_arg):
+
+    global drought_event
+    drought_event = drought_event_arg
     
     t = threading.Thread(target=socket_server, args=(shared_data, lock), daemon=True)
     t.start()
@@ -33,14 +34,6 @@ def env(s_data, lock, queue, command_queue):
                 p = mp.Process(target=run_predator, args=(shared_data, lock))
                 p.start()
 
-            elif cmd == "drought_on":
-                # On bascule l'état de l'Event
-                if shared_data["drought"].is_set():
-                    shared_data["drought"].clear()
-                    print("[ENV] Fin de la sécheresse")
-                else:
-                    shared_data["drought"].set()
-                    print("[ENV] Début de la sécheresse")
         with lock:
             # 1. On récupère TOUJOURS la version la plus à jour (celle modifiée par les proies)
             current_pos = shared_data["static_grass_pos"]
@@ -50,7 +43,7 @@ def env(s_data, lock, queue, command_queue):
             #dead = current_states.count(False)
             #alive = current_states.count(True)
             #print(f"[ENV] grass alive={alive} dead={dead}")
-            is_drought = shared_data["drought"].is_set()
+            is_drought = drought_event.is_set()
 
             if not is_drought:
                 if len(current_pos) < 400:
@@ -85,13 +78,11 @@ def env(s_data, lock, queue, command_queue):
         queue.put(stats)
 
 def handle_drought_signal(signum, frame):
-    global shared_data
-    # Basculer l'état de la sécheresse
-    if shared_data["drought"].is_set():
-        shared_data["drought"].clear()
+    if drought_event.is_set():
+        drought_event.clear()
         print("[ENV] Fin de la sécheresse (signal)")
     else:
-        shared_data["drought"].set()
+        drought_event.set()
         print("[ENV] Début de la sécheresse (signal)")
 
 def socket_server(shared_data, lock):
@@ -153,12 +144,10 @@ if __name__ == "__main__":
         "locked_preys": manager.dict(),
 
         "predators": mp.Value("i", 0),
-        "pred_positions": manager.dict(),
-
-        "drought": drought_event
+        "pred_positions": manager.dict()
     }
 
-    env_p = mp.Process(target=env, args=(shared_data, lock, queue,command_queue))
+    env_p = mp.Process(target=env, args=(shared_data, lock, queue, command_queue, drought_event))
     env_p.start()
 
     while env_p.pid is None:

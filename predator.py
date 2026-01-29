@@ -6,14 +6,14 @@ import os
 import random
 
 # Seuils 
-H = 30  
+H = 40  
 R = 80  
 HOST = "localhost"
 PORT = 6666
 
 class Predator:
     def __init__(self, shared_data, lock):
-        self.energy = 50
+        self.energy = 60
         self.state = "passive"
         self.shared = shared_data
         self.lock = lock
@@ -82,7 +82,7 @@ class Predator:
                 if self.shared["preys"].value > 0:
                     self.shared["preys"].value -= 1
                 
-                self.energy += 40
+                self.energy += 45
                 print(f"[PREDATEUR {self.pid}] a dévoré la proie {prey_pid}")
             
             if prey_pid in self.shared["locked_preys"]:
