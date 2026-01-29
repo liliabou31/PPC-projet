@@ -40,9 +40,6 @@ def env(shared_data, lock, queue, command_queue, drought_event_arg):
             current_states = shared_data["grass_states"]
 
             modified = False
-            #dead = current_states.count(False)
-            #alive = current_states.count(True)
-            #print(f"[ENV] grass alive={alive} dead={dead}")
             is_drought = drought_event.is_set()
 
             if not is_drought:
@@ -53,13 +50,11 @@ def env(shared_data, lock, queue, command_queue, drought_event_arg):
                         current_states.append(True)
                         modified = True
             else:
-                if current_states and random.random() < 0.5:
-                    i = random.randint(0, len(current_states) - 1)
-                    current_states[i] = False
-                    modified = True
+                for i in range(0, len(current_states) - 1):
+                    if current_states and random.random() < 0.3:
+                        current_states[i] = False
+                        modified = True
 
-            # 2. On ne réassigne QUE si env a ajouté ou supprimé de l'herbe
-            # Sinon, on laisse les modifs des proies tranquilles
             if modified:
                 shared_data["static_grass_pos"] = current_pos
                 shared_data["grass_states"] = current_states
@@ -71,11 +66,11 @@ def env(shared_data, lock, queue, command_queue, drought_event_arg):
                 "grass_coords": alive_grass,
                 "preys": shared_data["preys"].value,
                 "predators": shared_data["predators"].value,
-                "drought": is_drought,
                 "preys_coords": list(shared_data["prey_positions"].values()),
-                "preds_coords": list(shared_data["pred_positions"].values())
+                "preds_coords": list(shared_data["pred_positions"].values()),
+                "drought":is_drought
             }
-        queue.put(stats)
+            queue.put(stats)
 
 def handle_drought_signal(signum, frame):
     if drought_event.is_set():
